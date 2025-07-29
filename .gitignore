@@ -1,6 +1,6 @@
 node_modules/
-.env
 .local-chromium/
-*.log
 *.exe
 *.dll
+*.log
+.env
