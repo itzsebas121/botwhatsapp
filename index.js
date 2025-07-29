@@ -19,7 +19,7 @@ client.on('ready', () => {
 
 const sessions = {};
 
-const saludosValidos = ['hola', 'buenas tardes', 'buenas noches', 'buen día', 'buenos días'];
+const saludosValidos = ['hola', 'buenas tardes', 'buenas', 'buenas noches', 'buen día','buen dia', 'buenas tardes', 'buenas noches', 'como esta', 'buenos días', 'buenos dias', 'buenas', 'saludos', 'hey', 'hi', 'hello', 'info', 'informacion', 'información' ];
 
 function contieneSaludo(texto) {
   texto = texto.toLowerCase();
