@@ -19,7 +19,7 @@ client.on('ready', () => {
 
 const sessions = {};
 
-const saludosValidos = ['hola', 'buenas tardes', 'buenas', 'buenas noches', 'buen día','buen dia', 'buenas tardes', 'buenas noches', 'como esta', 'buenos días', 'buenos dias', 'buenas', 'saludos', 'hey', 'hi', 'hello', 'info', 'informacion', 'información' ];
+const saludosValidos = ['hola', 'buenas tardes', 'buenas', 'buenas noches', 'buen día', 'buen dia', 'buenas tardes', 'buenas noches', 'como esta', 'buenos días', 'buenos dias', 'buenas', 'saludos', 'hey', 'hi', 'hello', 'info', 'informacion', 'información'];
 
 function contieneSaludo(texto) {
   texto = texto.toLowerCase();
@@ -27,7 +27,7 @@ function contieneSaludo(texto) {
 }
 
 client.on('message', async (message) => {
-  
+
   // 1. Chequeo básico con el ID del chat (caso más común)
   if (message.from.includes('-')) {
     return;
@@ -76,13 +76,18 @@ client.on('message', async (message) => {
   async function mostrarMenuPrincipal(msg, sess) {
     sess.menu = 'principal';
     await msg.reply(
-      `👋 Hola ${nombre}, bienvenido a *OrionAcademy*, centro de formación y capacitación en seguridad.\n\n` +
-      `Selecciona una opción respondiendo con el número:\n` +
+      `👋 Hola ${nombre}, bienvenido a *OrionAcademy*, centro de formación y capacitación en seguridad privada.\n\n` +
+      `📚 Selecciona una opción respondiendo con el número:\n` +
       `1️⃣ Cursos Básicos\n` +
       `2️⃣ Especializaciones\n` +
-      `3️⃣ Contactar asesor\n` +
-      `4️⃣ Salir`
+      `3️⃣ Contactar a un asesor\n` +
+      `4️⃣ Salir\n\n` +
+      `📍 *Estamos ubicados en Ambato, Av. Confraternidad y Calle 7.*\n` +
+      `🔗 [Ver ubicación en Google Maps](https://n9.cl/n9pkf)\n\n` +
+      `¡Te esperamos para iniciar tu formación profesional!`
     );
+
+
   }
 
   // Menú principal
