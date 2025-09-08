@@ -19,7 +19,7 @@ client.on('ready', () => {
 
 const sessions = {};
 
-const saludosValidos = ['hola', 'buenas tardes', 'buenas', 'buenas noches', 'buen día', 'buen dia', 'buenas tardes', 'buenas noches', 'como esta', 'buenos días', 'buenos dias', 'buenas', 'saludos', 'hey', 'hi', 'hello', 'info', 'informacion', 'información'];
+const saludosValidos = ['hola', 'buenas tardes', 'buenas', 'buenas noches', 'buen día', 'buen dia', 'buenos días', 'buenos dias', 'saludos', 'hey', 'hi', 'hello', 'info', 'informacion', 'información'];
 
 function contieneSaludo(texto) {
   texto = texto.toLowerCase();
@@ -27,25 +27,19 @@ function contieneSaludo(texto) {
 }
 
 client.on('message', async (message) => {
-
-  // 1. Chequeo básico con el ID del chat (caso más común)
   if (message.from.includes('-')) {
     return;
   }
 
-  // 2. Chequeo usando getChat() para detectar si es grupo
   const chat = await message.getChat();
   if (chat.isGroup || chat.isGroupMsg) {
     return;
   }
 
-  // 3. Opcional: si quieres estar aún más seguro, chequea si el contacto es grupo
   const contact = await message.getContact();
   if (contact.isGroup) {
     return;
   }
-
-  // Si pasa estas validaciones, es chat individual -> continuar con la lógica
 
   const chatId = message.from;
   const texto = message.body.toLowerCase().trim();
@@ -56,7 +50,6 @@ client.on('message', async (message) => {
   }
   const session = sessions[chatId];
 
-  // Si el usuario está en contacto con asesor, solo reactivamos con saludo
   if (session.enContacto) {
     if (contieneSaludo(texto)) {
       session.enContacto = false;
@@ -64,15 +57,13 @@ client.on('message', async (message) => {
       await message.reply(`👋 Hola ${nombre}, bienvenido de nuevo a *OrionAcademy*.`);
       return mostrarMenuPrincipal(message, session);
     }
-    return; // no responde si está en contacto con asesor
+    return;
   }
 
-  // Si no ha iniciado sesión (menu=null) solo responde si contiene saludo
   if (session.menu === null && !contieneSaludo(texto)) {
-    return; // no responde si no saluda para empezar
+    return;
   }
 
-  // Función para mostrar menú principal
   async function mostrarMenuPrincipal(msg, sess) {
     sess.menu = 'principal';
     await msg.reply(
@@ -80,14 +71,13 @@ client.on('message', async (message) => {
       `📚 Selecciona una opción respondiendo con el número:\n` +
       `1️⃣ Cursos Básicos\n` +
       `2️⃣ Especializaciones\n` +
-      `3️⃣ Contactar a un asesor\n` +
-      `4️⃣ Salir\n\n` +
+      `3️⃣ Combos\n` +
+      `4️⃣ Contactar a un asesor\n` +
+      `5️⃣ Salir\n\n` +
       `📍 *Estamos ubicados en Ambato, Av. Confraternidad y Calle 7.*\n` +
       `🔗 [Ver ubicación en Google Maps](https://n9.cl/n9pkf)\n\n` +
       `¡Te esperamos para iniciar tu formación profesional!`
     );
-
-
   }
 
   // Menú principal
@@ -117,6 +107,16 @@ client.on('message', async (message) => {
       );
     }
     if (texto === '3') {
+      session.menu = 'combos';
+      return await message.reply(
+        `🎁 *Combos disponibles:*\n\n` +
+        `1️⃣ Combo 1: Primer Nivel + Reentrenamiento + Manejo de Consolas\n` +
+        `2️⃣ Combo 2: Segundo Nivel + Supervisor de Seguridad\n` +
+        `3️⃣ Combo 3: Bares y Restaurantes + Control de Eventos Públicos + Seguridad Financiera\n\n` +
+        `*Escribe el número para más info* o '0' para regresar al menú principal.`
+      );
+    }
+    if (texto === '4') {
       session.enContacto = true;
       return await message.reply(
         `📲 Perfecto ${nombre}, un asesor se pondrá en contacto contigo pronto.\n` +
@@ -124,8 +124,8 @@ client.on('message', async (message) => {
         `Si quieres volver al menú en otro momento, envía un saludo como "hola" o "buenos días".`
       );
     }
-    if (texto === '4' || texto === 'salir') {
-      session.menu = null;  // resetea menú para obligar saludo para reingresar
+    if (texto === '5' || texto === 'salir') {
+      session.menu = null;
       return await message.reply(`👋 Gracias por comunicarte con OrionAcademy, ${nombre}. ¡Hasta pronto!`);
     }
     return;
@@ -242,7 +242,47 @@ client.on('message', async (message) => {
     }
   }
 
-  // Si el usuario escribe saludo en cualquier otro caso, mostramos menú principal
+  // Menú combos
+  if (session.menu === 'combos') {
+    if (texto === '0') {
+      return mostrarMenuPrincipal(message, session);
+    }
+    switch (texto) {
+      case '1':
+        return await message.reply(
+          `🎁 *Combo 1*\n` +
+          `Incluye: Curso Primer Nivel + Reentrenamiento + Manejo de Consolas.\n` +
+          `COTIZACIÓN:\n` +
+          `Contado: $300.00\n` +
+          `Crédito:  $350.00\n\n` +
+          `Valor incluye IVA.\n\n` +
+          `*Escribe '0' para regresar.*`
+        );
+      case '2':
+        return await message.reply(
+          `🎁 *Combo 2*\n` +
+          `Incluye: Curso Segundo Nivel + Supervisor de Seguridad.\n` +
+          `COTIZACIÓN:\n` +
+          `Contado: $380.00\n` +
+          `Crédito:  $430.00\n\n` +
+          `Valor incluye IVA.\n\n` +
+          `*Escribe '0' para regresar.*`
+        );
+      case '3':
+        return await message.reply(
+          `🎁 *Combo 3*\n` +
+          `Incluye: Especialización en Bares y Restaurantes + Control de Eventos Públicos + Seguridad Financiera.\n` +
+          `COTIZACIÓN:\n` +
+          `Contado: $450.00\n` +
+          `Crédito:  $500.00\n\n` +
+          `Valor incluye IVA.\n\n` +
+          `*Escribe '0' para regresar.*`
+        );
+      default:
+        return;
+    }
+  }
+
   if (contieneSaludo(texto)) {
     return mostrarMenuPrincipal(message, session);
   }
