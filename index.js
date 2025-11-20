@@ -3,12 +3,12 @@ import qrcode from "qrcode-terminal";
 import fetch from "node-fetch";
 import "dotenv/config";
 import { getContext } from "./lib/context.js";
+import iaBlockedNumbers from "./lib/blocked.js";
 
 const { Client, LocalAuth } = pkg;
 
-const iaBlockedNumbers = new Set();
 const sessions = new Map();
-const INVISIBLE_MARKER = '\u200B\u200C\u200D\u2060'; // sequence of zero-width characters used as hidden marker
+const INVISIBLE_MARKER = '\u200B\u200C\u200D\u2060';
 
 const client = new Client({
   authStrategy: new LocalAuth(),
@@ -51,7 +51,7 @@ async function callIA(messages, user) {
   }
 
   const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) return "Error: GROQ_API_KEY no configurada.";
+  if (!apiKey) throw new Error("GROQ_API_KEY no configurada");
 
   const systemPrompt = `${getContext()}
 User language: identify automatically the language of the user.
@@ -86,16 +86,15 @@ REACTIVATION BEHAVIOR:
     });
 
     const data = await response.json();
-
     if (!response.ok) {
       console.error("Groq API Error:", data);
-      return "Hubo un problema procesando tu mensaje.";
+      throw new Error("Groq API: respuesta no OK");
     }
 
     return data.choices?.[0]?.message?.content || "Sin respuesta.";
   } catch (err) {
     console.error("IA ERROR:", err);
-    return "Error procesando tu solicitud.";
+    throw err;
   }
 }
 
@@ -141,22 +140,34 @@ client.on("message", async message => {
   if (containsActivation) {
     iaBlockedNumbers.delete(user);
 
-    // Ask the model to generate a short reactivation confirmation in the user's 
+    // Ask the model to generate a short reactivation confirmation in the user's
     const reactivationPrompt = [
       { role: "user", content: "El usuario ha reactivado la IA. Devuelve SOLO una frase muy corta de confirmación de retorno  en el idioma del usuario. No añadas explicaciones ni texto adicional, Solo un pequeño contexto de la empresa" }
     ];
 
-    const reactivationReply = await callIA(reactivationPrompt, user);
-    if (reactivationReply == null) {
-      console.log(`⚠️ Reactivación: no se pudo generar mensaje para ${user}`);
+    try {
+      const reactivationReply = await callIA(reactivationPrompt, user);
+      if (reactivationReply == null) {
+        console.log(`⚠️ Reactivación: no se pudo generar mensaje para ${user}`);
+        return;
+      }
+
+      // store and send the generated reply
+      session.history.push({ role: "assistant", content: reactivationReply });
+      await sendIA(user, reactivationReply);
+      console.log(`✅ IA activada para: ${user}`);
+      return;
+    } catch (err) {
+      console.error(`IA reactivation error for ${user}:`, err);
+      // Inform user and block IA for this number
+      try {
+        await sendIA(user, "Lo siento, en este momento no puedo procesar tu solicitud con la IA. Un asesor se comunicará contigo lo antes posible. Mientras tanto, te conectaré con un asesor humano.");
+      } catch (e) {
+        console.error("Error sending fallback message:", e);
+      }
+      iaBlockedNumbers.add(user);
       return;
     }
-
-    // store and send the generated reply
-    session.history.push({ role: "assistant", content: reactivationReply });
-    await sendIA(user, reactivationReply);
-    console.log(`✅ IA activada para: ${user}`);
-    return;
   }
 
   // -----------------------------------------------------
@@ -202,7 +213,19 @@ client.on("message", async message => {
 
   session.history.push({ role: "user", content: text });
 
-  const reply = await callIA(session.history, user);
+  let reply;
+  try {
+    reply = await callIA(session.history, user);
+  } catch (err) {
+    console.error(`IA processing error for ${user}:`, err);
+    try {
+      await sendIA(user, "Lo siento, en este momento no puedo procesar tu solicitud con la IA. Un asesor se comunicará contigo lo antes posible.");
+    } catch (e) {
+      console.error("Error sending fallback message:", e);
+    }
+    iaBlockedNumbers.add(user);
+    return;
+  }
 
   // If callIA returned null it means the user is blocked and we should not send a reply
   if (reply == null) {
