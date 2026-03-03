@@ -14,7 +14,11 @@ const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
     headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"]
+    executablePath: '/snap/bin/chromium',
+    args: [
+	"--no-sandbox",
+	"--disable-setuid-sandbox",
+	"--disable-dev-shm-usage"]
   }
 });
 
@@ -140,21 +144,12 @@ client.on("message", async message => {
   if (containsActivation) {
     iaBlockedNumbers.delete(user);
 
-    // Ask the model to generate a short reactivation confirmation in the user's
-    const reactivationPrompt = [
-      { role: "user", content: "El usuario ha reactivado la IA. Devuelve SOLO una frase muy corta de confirmación de retorno  en el idioma del usuario. No añadas explicaciones ni texto adicional, Solo un pequeño contexto de la empresa" }
-    ];
+    // Send the fixed reactivation message
+    const reactivationMessage = "🤖 Estoy de vuelta — Bienvenido a Orion Academy, ¿En qué te ayudo? 📍 Estamos ubicados en Ambato, Calle 7 y Av. Confraternidad Junto a Molinos casari.";
 
     try {
-      const reactivationReply = await callIA(reactivationPrompt, user);
-      if (reactivationReply == null) {
-        console.log(`⚠️ Reactivación: no se pudo generar mensaje para ${user}`);
-        return;
-      }
-
-      // store and send the generated reply
-      session.history.push({ role: "assistant", content: reactivationReply });
-      await sendIA(user, reactivationReply);
+      session.history.push({ role: "assistant", content: reactivationMessage });
+      await sendIA(user, reactivationMessage);
       console.log(`✅ IA activada para: ${user}`);
       return;
     } catch (err) {
@@ -183,19 +178,9 @@ client.on("message", async message => {
   // -----------------------------------------------------
   const disableCommands = [
     "hablar con persona",
-    "humano",
-    "agente",
-    "soporte",
     "quiero hablar con alguien",
-    "no ia",
-    "sin ia",
-    "persona",
     "hablar con un asesor",
-    "hablar con asesor",
-    "hablar con asesora",
     "hablar con secretaria",
-    "hablar con un agente",
-    "hablar con un representante"
   ];
 
   // additional single-word matches for common phrases
@@ -204,7 +189,7 @@ client.on("message", async message => {
   if (disableCommands.some(cmd => text.includes(cmd)) || disableWordRegex.test(text)) {
     await sendIA(
       user,
-      "👤 Perfecto — te conectaré con un asesor. Por favor envíanos tu nombre completo y el curso o servicio que te interesa. Alguien de nuestro equipo te contactará pronto 📞\n\nPara volver a IA escribe: *hablar con ia*"
+      "Escribe cualquiera de estas palabras para conectarte con un asesor:\n\n• asesor\n• humano\n• agente\n• soporte\n• secretario\n• representante\n• hablar con persona\n\nO escribe algo relacionado con hablar con un asesor.\n\nUna persona de nuestro equipo se contactará contigo para atenderte 📞"
     );
 
     iaBlockedNumbers.add(user);
