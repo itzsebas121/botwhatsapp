@@ -145,7 +145,7 @@ client.on("message", async message => {
     iaBlockedNumbers.delete(user);
 
     // Send the fixed reactivation message
-    const reactivationMessage = "🤖 Estoy de vuelta — Bienvenido a Orion Academy, ¿En qué te ayudo? 📍 Estamos ubicados en Ambato, Calle 7 y Av. Confraternidad Junto a Molinos casari.";
+    const reactivationMessage = "🤖 Estoy de vuelta — Soy el asistente virtual de Orionacademy CIA. LTDA. - Escuela para guardias. ¿En que te ayudo? 📍 Estamos ubicados en Ambato, Calle 7 y Av. Confraternidad junto a Molinos Casari.";
 
     try {
       session.history.push({ role: "assistant", content: reactivationMessage });
