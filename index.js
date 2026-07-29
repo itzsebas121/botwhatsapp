@@ -9,6 +9,8 @@ const { Client, LocalAuth } = pkg;
 
 const sessions = new Map();
 const INVISIBLE_MARKER = '\u200B\u200C\u200D\u2060';
+const MAX_HISTORY_MESSAGES = 12;
+const MAX_GROQ_ATTEMPTS = 3;
 
 const client = new Client({
   authStrategy: new LocalAuth(),
@@ -39,10 +41,33 @@ function normalizeUser(user) {
     .toLowerCase();
 }
 
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function getRetryDelayMs(response, data, attempt) {
+  const retryAfter = Number(response.headers.get("retry-after"));
+  if (Number.isFinite(retryAfter) && retryAfter > 0) {
+    return Math.ceil(retryAfter * 1000);
+  }
+
+  const message = data?.error?.message || "";
+  const match = message.match(/try again in ([\d.]+)s/i);
+  if (match) return Math.ceil(Number(match[1]) * 1000);
+
+  return 2000 * attempt;
+}
+
 async function sendIA(chatId, text) {
   const textWithMarker = `${text}${INVISIBLE_MARKER}`;
   const sent = await client.sendMessage(chatId, textWithMarker);
-  sent.__fromAI = true;
+
+  // Some whatsapp-web.js/client combinations return undefined even when the
+  // message was sent successfully. The invisible marker is the reliable way
+  // message_create identifies AI messages, so this property is only a backup.
+  if (sent && (typeof sent === "object" || typeof sent === "function")) {
+    sent.__fromAI = true;
+  }
 
   return sent;
 }
@@ -60,10 +85,8 @@ async function callIA(messages, user) {
   const systemPrompt = `${getContext()}
 User language: identify automatically the language of the user.
 Respond ONLY in this language.
-
-INVISIBLE MARKER INSTRUCTION:
-- Always append exactly the following invisible marker at the end of every assistant message and do NOT mention or expose it to the user: ${INVISIBLE_MARKER}
-- The marker is used internally by the bot to detect AI-generated messages and must not be described to users.
+Default to Spanish unless the user's latest message is clearly written in English.
+For Spanish responses, always use the official course names "Primer nivel", "Segundo nivel", "Protección VIP" and "Reentrenamiento"; never use "Level I", "Level II" or "Re-training".
 
 REACTIVATION BEHAVIOR:
 - When the user reactivates the assistant (for example by sending phrases such as "hablar con ia", "activar ia" or simply "IA"), the assistant must begin its next message with a short, natural return confirmation such as "🤖 Estoy de vuelta — ¿En qué te ayudo?" or an equivalent brief phrase in the user's language. Keep this greeting concise and friendly, then continue with the assistance.
@@ -73,29 +96,41 @@ REACTIVATION BEHAVIOR:
     model: "llama-3.3-70b-versatile",
     messages: [
       { role: "system", content: systemPrompt },
-      ...messages
+      ...messages.slice(-MAX_HISTORY_MESSAGES)
     ],
     temperature: 0.7,
-    max_tokens: 1024
+    max_tokens: 512
   };
 
   try {
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
+    for (let attempt = 1; attempt <= MAX_GROQ_ATTEMPTS; attempt += 1) {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
 
-    const data = await response.json();
-    if (!response.ok) {
+      const data = await response.json();
+      if (response.ok) {
+        return data.choices?.[0]?.message?.content || "Sin respuesta.";
+      }
+
       console.error("Groq API Error:", data);
-      throw new Error("Groq API: respuesta no OK");
-    }
 
-    return data.choices?.[0]?.message?.content || "Sin respuesta.";
+      if (response.status === 429 && attempt < MAX_GROQ_ATTEMPTS) {
+        const delayMs = getRetryDelayMs(response, data, attempt);
+        console.log(`⏳ Límite temporal de Groq; reintento ${attempt + 1}/${MAX_GROQ_ATTEMPTS} en ${delayMs} ms.`);
+        await wait(delayMs);
+        continue;
+      }
+
+      const error = new Error(`Groq API: HTTP ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
   } catch (err) {
     console.error("IA ERROR:", err);
     throw err;
@@ -154,13 +189,7 @@ client.on("message", async message => {
       return;
     } catch (err) {
       console.error(`IA reactivation error for ${user}:`, err);
-      // Inform user and block IA for this number
-      try {
-        await sendIA(user, "Lo siento, en este momento no puedo procesar tu solicitud con la IA. Un asesor se comunicará contigo lo antes posible. Mientras tanto, te conectaré con un asesor humano.");
-      } catch (e) {
-        console.error("Error sending fallback message:", e);
-      }
-      iaBlockedNumbers.add(user);
+      // Technical errors must not message the user or disable the AI.
       return;
     }
   }
@@ -197,18 +226,14 @@ client.on("message", async message => {
   }
 
   session.history.push({ role: "user", content: text });
+  session.history = session.history.slice(-MAX_HISTORY_MESSAGES);
 
   let reply;
   try {
     reply = await callIA(session.history, user);
   } catch (err) {
     console.error(`IA processing error for ${user}:`, err);
-    try {
-      await sendIA(user, "Lo siento, en este momento no puedo procesar tu solicitud con la IA. Un asesor se comunicará contigo lo antes posible.");
-    } catch (e) {
-      console.error("Error sending fallback message:", e);
-    }
-    iaBlockedNumbers.add(user);
+    // Keep the AI active and silently try again on the user's next message.
     return;
   }
 
@@ -218,6 +243,7 @@ client.on("message", async message => {
   }
 
   session.history.push({ role: "assistant", content: reply });
+  session.history = session.history.slice(-MAX_HISTORY_MESSAGES);
 
   await sendIA(user, reply);
 });
